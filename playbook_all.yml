@@ -1,0 +1,129 @@
+---
+- hosts: all 
+  become: true
+  vars_files:
+    - vars/default.yml
+
+  tasks:
+    - name: Install prerequisites
+      apt: name={{ item }} update_cache=yes state=latest force_apt_get=yes
+      loop: [ 'aptitude' ]
+      when: ansible_os_family == "Debian"
+
+  #Apache Configuration
+    - name: Install LAMP Packages
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'apache2', 'mysql-server', 'python3-pymysql', 'php', 'php-mysql', 'libapache2-mod-php' ]
+      when: ansible_os_family == "Debian"
+
+    - name: Create document root
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        owner: "{{ app_user }}"
+        mode: '0755'
+      when: ansible_os_family == "Debian"
+
+    - name: Set up Apache virtualhost
+      template:
+        src: "files/apache.conf.j2"
+        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+      notify: Reload Apache
+      when: ansible_os_family == "Debian"
+
+    - name: Enable new site
+      shell: /usr/sbin/a2ensite {{ http_conf }}
+      notify: Reload Apache
+      when: ansible_os_family == "Debian"
+
+    - name: Disable default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+      when: disable_default
+      notify: Reload Apache
+      when: ansible_os_family == "Debian"
+
+    - name: Installing Apache
+      yum: 
+        name: httpd
+        state: installed
+      when: ansible_os_family == "RedHat"
+
+    - name: Download sources
+      get_url:
+        url: http://repo.mysql.com/mysql-community-release-el7-5.noarch.rpm
+        dest: .
+      when: ansible_os_family == "RedHat"
+
+    - name: Install package
+      yum:
+        name: ./mysql-community-release-el7-5.noarch.rpm
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install MySQL
+      yum: 
+        name: mysql-server 
+        state: installed
+      when: ansible_os_family == "RedHat"
+
+    - name: Start the MYSQL service
+      service:
+        name: mysqld
+        enabled: yes
+        state: started
+      when: ansible_os_family == "RedHat"
+
+
+  # UFW Configuration
+    - name: "UFW - Allow HTTP on port {{ http_port }}"
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+      when: ansible_os_family == "Debian"
+
+  # PHP Info Page
+    - name: Sets Up PHP Info Page
+      template:
+        src: "files/info.php.j2"
+        dest: "/var/www/{{ http_host }}/info.php"
+      when: ansible_os_family == "Debian"
+
+    - name: Installing PHP
+      yum:
+        name: 
+          - php 
+          - php-mysql 
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+    - name: Copying your php file in the /var/www/html
+      copy:
+        src: files/info.php.j2
+        dest: /var/www/html/index.php
+      when: ansible_os_family == "RedHat"
+
+    - name: Adding LoadModule php5_module        modules/libphp5.so to /etc/httpd/conf/httpd.conf
+      lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        line: "LoadModule php5_module        modules/libphp5.so"
+      when: ansible_os_family == "RedHat"
+
+    - name: Enabling httpd service and start the service
+      service:
+        name: httpd
+        enabled: yes
+        state: started
+      when: ansible_os_family == "RedHat"
+
+
+  handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
