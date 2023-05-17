@@ -1,0 +1,129 @@
+---
+- hosts: all 
+  become: true
+  vars_files:
+    - vars/default.yml
+
+  tasks:
+    - name: Install prerequisites
+      apt: name={{ item }} update_cache=yes state=latest force_apt_get=yes
+      loop: [ 'aptitude' ]
+      when: ansible_os_family == "Debian"
+
+  #Nginx Configuration
+    - name: Install LAMP Packages
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'nginx', 'mysql-server', 'python3-pymysql', 'php', 'php-mysql', 'libapache2-mod-php' ]
+      when: ansible_os_family == "Debian"
+
+    - name: Add epel-release repo on CentOS
+      yum:
+        name: epel-release
+        state: present
+      when: ansible_os_family == "RedHat"    
+      
+    - name: Install Nginx on CentOS    
+      yum: 
+        name: nginx
+        state: latest
+        update_cache: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Set up nginx config directory
+      file: path=/etc/nginx/{{ item }}
+            state=directory
+      with_items:
+        - sites-available
+        - sites-enabled
+
+    - name: Apply Nginx template
+      template:
+        src: files/nginx.conf.j2
+        dest: /etc/nginx/sites-available/default
+      notify: Restart Nginx
+
+    - name: Enable new site
+      file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+      notify: Restart Nginx
+
+    #- name: Insert Index Page
+    #  template:
+    #    src: files/info.php.j2
+    #    dest: /usr/share/nginx/html/index
+    #  when: ansible_os_family == "RedHat"
+
+    #- name: Start NGiNX
+    #  service:
+    #    name: nginx
+    #    state: started
+    #  when: ansible_os_family == "RedHat"
+
+    - name: Download sources
+      get_url:
+        url: http://repo.mysql.com/mysql-community-release-el7-5.noarch.rpm
+        dest: .
+      when: ansible_os_family == "RedHat"
+
+    - name: Install package
+      yum:
+        name: ./mysql-community-release-el7-5.noarch.rpm
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Install MySQL
+      yum: 
+        name: mysql-server 
+        state: installed
+      when: ansible_os_family == "RedHat"
+
+    - name: Start the MYSQL service
+      service:
+        name: mysqld
+        enabled: yes
+        state: started
+      when: ansible_os_family == "RedHat"
+
+
+  # UFW Configuration
+    - name: "UFW - Allow HTTP on port {{ http_port }}"
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+      when: ansible_os_family == "Debian"
+
+  # PHP Info Page
+    - name: Sets Up PHP Info Page
+      template:
+        src: "files/info.php.j2"
+        dest: "/var/www/{{ http_host }}/info.php"
+      when: ansible_os_family == "Debian"
+
+    - name: Installing PHP
+      yum:
+        name: 
+          - php 
+          - php-mysql 
+        state: latest
+      when: ansible_os_family == "RedHat"
+
+    - name: Copying your php file in the /var/www/html
+      copy:
+        src: files/info.php.j2
+        dest: /var/www/html/index.php
+      when: ansible_os_family == "RedHat"
+
+    - name: Adding LoadModule php5_module        modules/libphp5.so to /etc/httpd/conf/httpd.conf
+      lineinfile:
+        path: /etc/httpd/conf/httpd.conf
+        line: "LoadModule php5_module        modules/libphp5.so"
+      when: ansible_os_family == "RedHat"
+
+  handlers:
+    - name: Restart Nginx
+      service:
+        name: nginx
+        state: restarted

@@ -3,5 +3,7 @@ mysql_root_password: "r00t2358"
 app_user: "ansible"
 http_host: "ubuntuclient-1.localdomain"
 http_conf: "ubuntuclient-1.localdomain.conf"
-http_port: "80"
+http_port: "8086"
 disable_default: true
+server_name: "Nginx"
+document_root: /var/www/html
