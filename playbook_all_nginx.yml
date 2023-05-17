@@ -35,19 +35,35 @@
       with_items:
         - sites-available
         - sites-enabled
+    
+    - name: Generate the nginx configuration file on CentOS
+      copy: src=files/nginx.conf.j2
+            dest=/etc/nginx/nginx.conf
+      when: ansible_os_family == "RedHat"
 
-    - name: Apply Nginx template
-      template:
-        src: files/nginx.conf.j2
-        dest: /etc/nginx/sites-available/default
-      notify: Restart Nginx
+    - name: Deactivate the default nginx site on CentOS
+      file: path=/etc/nginx/sites-enabled/default
+            state=absent
+      when: ansible_os_family == "RedHat"
 
-    - name: Enable new site
-      file:
-        src: /etc/nginx/sites-available/default
-        dest: /etc/nginx/sites-enabled/default
-        state: link
-      notify: Restart Nginx
+    - name: Start NGiNX on CentOs
+      service:
+        name: nginx
+        state: started
+      when: ansible_os_family == "RedHat"
+
+    #- name: Apply Nginx template
+    #  template:
+    #    src: files/nginx.conf.j2
+    #    dest: /etc/nginx/sites-available/default
+    #  notify: Restart Nginx
+
+    #- name: Enable new site
+    #  file:
+    #    src: /etc/nginx/sites-available/default
+    #    dest: /etc/nginx/sites-enabled/default
+    #    state: link
+    #  notify: Restart Nginx
 
     #- name: Insert Index Page
     #  template:
